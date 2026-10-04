@@ -1,4 +1,4 @@
-```yaml
+
 name: Shadow Slave Calendar
 
 on:
@@ -44,4 +44,4 @@ jobs:
             git commit -m "Update Shadow Slave calendar"
             git push
           fi
-```
+
