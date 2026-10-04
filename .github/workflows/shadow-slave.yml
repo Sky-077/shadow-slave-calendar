@@ -1,7 +1,11 @@
+```yaml
 name: Shadow Slave Calendar
 
 on:
   workflow_dispatch:
+
+  schedule:
+    - cron: "0 */2 * * *"
 
 permissions:
   contents: write
@@ -31,6 +35,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add Shadow_Slave.ics
 
           if git diff --cached --quiet; then
@@ -39,3 +44,4 @@ jobs:
             git commit -m "Update Shadow Slave calendar"
             git push
           fi
+```
