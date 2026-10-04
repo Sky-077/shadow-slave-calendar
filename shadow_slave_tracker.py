@@ -1,3 +1,4 @@
+
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -13,12 +14,6 @@ OUTPUT = Path("Shadow_Slave.ics")
 TZ = ZoneInfo("America/New_York")
 UTC = ZoneInfo("UTC")
 
-# Premier épisode connu du planning hebdomadaire.
-LAUNCH_DATE = datetime(
-    2026, 8, 19, 21, 0, tzinfo=TZ
-)
-
-# Nombre d'épisodes futurs à mettre dans le calendrier.
 FUTURE_EPISODES = 8
 
 HEADERS = {
@@ -45,11 +40,6 @@ def fetch_home():
 
 
 def episode_links(soup):
-    """
-    Détecte les liens du type :
-    /comic-episode/episode-11/
-    """
-
     found = {}
 
     for link in soup.find_all("a", href=True):
@@ -80,13 +70,6 @@ def episode_links(soup):
 
 
 def parse_episode_number(text):
-    """
-    Cherche :
-    Episode 12
-    Ep. 12
-    EP 12
-    """
-
     match = re.search(
         r"(?:episode|ep\.?)\s*[^0-9]{0,10}(\d+)",
         text,
@@ -100,10 +83,6 @@ def parse_episode_number(text):
 
 
 def announcement_links(soup):
-    """
-    Récupère les liens /updates/ présents sur Aethon.
-    """
-
     results = []
 
     for link in soup.find_all("a", href=True):
@@ -121,20 +100,10 @@ def announcement_links(soup):
             (href, title)
         )
 
-    # Suppression des doublons
     return list(dict.fromkeys(results))
 
 
 def parse_explicit_date(text):
-    """
-    Cherche différentes formes de dates :
-
-    2026-10-07
-    2026/10/07
-    07-10-2026
-    07/10/2026
-    """
-
     patterns = [
         r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b",
         r"\b(\d{1,2})[-/](\d{1,2})[-/](20\d{2})\b",
@@ -152,13 +121,10 @@ def parse_explicit_date(text):
         groups = match.groups()
 
         try:
-            # YYYY-MM-DD
             if len(groups[0]) == 4:
                 year = int(groups[0])
                 month = int(groups[1])
                 day = int(groups[2])
-
-            # DD-MM-YYYY
             else:
                 day = int(groups[0])
                 month = int(groups[1])
@@ -180,11 +146,6 @@ def parse_explicit_date(text):
 
 
 def parse_relative_wednesday(text):
-    """
-    Détecte une annonce du type :
-    "next Wednesday"
-    """
-
     if not re.search(
         r"\bnext\s+wednesday\b",
         text,
@@ -194,7 +155,6 @@ def parse_relative_wednesday(text):
 
     now = datetime.now(TZ)
 
-    # Wednesday = 2
     days_until = (2 - now.weekday()) % 7
 
     if days_until == 0:
@@ -251,33 +211,58 @@ def fetch_announcement(url):
     )
 
 
+def next_wednesday_21h():
+    """
+    Retourne le prochain mercredi à 21h
+    dans le fuseau America/New_York.
+    """
+
+    now = datetime.now(TZ)
+
+    days_until = (2 - now.weekday()) % 7
+
+    # Si nous sommes déjà mercredi mais
+    # que 21h est passée, on prend mercredi suivant.
+    candidate = now + timedelta(
+        days=days_until
+    )
+
+    candidate = candidate.replace(
+        hour=21,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    if candidate <= now:
+        candidate += timedelta(days=7)
+
+    return candidate
+
+
 def build_future_events(last_episode):
     """
-    Construit le planning prévisionnel
-    à partir du rythme hebdomadaire.
+    Construit le planning à partir du
+    prochain mercredi.
+
+    Exemple :
+    dernier épisode = E11
+    prochain mercredi = E12
+    puis E13, E14, etc. chaque 7 jours.
     """
 
     events = []
 
-    first_episode = max(
-        last_episode + 1,
-        1,
-    )
+    first_episode = last_episode + 1
 
-    last_future_episode = (
-        last_episode
-        + FUTURE_EPISODES
-    )
+    first_date = next_wednesday_21h()
 
-    for episode in range(
-        first_episode,
-        last_future_episode + 1,
-    ):
+    for index in range(FUTURE_EPISODES):
+        episode = first_episode + index
+
         release_date = (
-            LAUNCH_DATE
-            + timedelta(
-                days=7 * (episode - 1)
-            )
+            first_date
+            + timedelta(days=7 * index)
         )
 
         events.append(
@@ -300,10 +285,6 @@ def build_future_events(last_episode):
 
 
 def escape_ics(value):
-    """
-    Échappement des caractères spéciaux ICS.
-    """
-
     value = str(value)
 
     value = value.replace(
@@ -343,10 +324,6 @@ def format_utc(date):
 
 
 def make_ics(events):
-    """
-    Génère le fichier iCalendar.
-    """
-
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -363,9 +340,7 @@ def make_ics(events):
         episode = event["episode"]
         start = event["start"]
 
-        end = start + timedelta(
-            hours=1
-        )
+        end = start + timedelta(hours=1)
 
         uid = (
             f"shadow-slave-episode-"
@@ -409,29 +384,11 @@ def refine_events_from_announcements(
     soup,
     events,
 ):
-    """
-    Cherche les annonces Shadow Slave
-    et remplace les dates prévisionnelles
-    lorsqu'une date explicite est trouvée.
-    """
-
     announcements = announcement_links(
         soup
     )
 
     for href, title in announcements:
-
-        title_lower = title.lower()
-        href_lower = href.lower()
-
-        # On ne garde que les annonces
-        # susceptibles de concerner Shadow Slave.
-        if (
-            "shadow" not in title_lower
-            and "shadow" not in href_lower
-        ):
-            continue
-
         try:
             text = fetch_announcement(
                 href
@@ -451,6 +408,11 @@ def refine_events_from_announcements(
             + " "
             + text
         )
+
+        # On vérifie le contenu complet de
+        # l'annonce, pas seulement son titre.
+        if "shadow slave" not in combined_text.lower():
+            continue
 
         episode = parse_episode_number(
             combined_text
@@ -473,6 +435,11 @@ def refine_events_from_announcements(
                 event["description"] = (
                     "Date issue d'une "
                     "annonce Aethon Webcomics."
+                )
+
+                print(
+                    f"Date confirmée pour E{episode} : "
+                    f"{release_date.strftime('%Y-%m-%d %H:%M')}"
                 )
 
                 break
@@ -503,6 +470,16 @@ def main():
     events = build_future_events(
         last_episode
     )
+
+    print(
+        "Planning prévisionnel :"
+    )
+
+    for event in events:
+        print(
+            f"  E{event['episode']} -> "
+            f"{event['start'].strftime('%Y-%m-%d %H:%M %Z')}"
+        )
 
     refine_events_from_announcements(
         soup,
